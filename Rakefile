@@ -4,13 +4,11 @@ require 'shellwords'
 
 gem 'hoe'
 require 'hoe'
+Hoe.plugin :racc
 Hoe.plugin :debugging
 Hoe.plugin :git
 Hoe.plugin :gemspec
 Hoe.plugin :bundler
-
-GENERATED_PARSER    = "lib/nokogiri/css/parser.rb"
-GENERATED_TOKENIZER = "lib/nokogiri/css/tokenizer.rb"
 
 def java?
   /java/ === RUBY_PLATFORM
@@ -141,7 +139,7 @@ HOE = Hoe.spec 'nokogiri' do
     ["rake-compiler",      "~> 1.0.3"],
     ["rake-compiler-dock", "~> 0.6.2"],
     ["racc",               "~> 1.4.14"],
-    ["rexical",            "~> 1.0.5"],
+    ["oedipus_lex",            "> 0"],
     ["concourse",          "~> 0.15"],
   ]
 
@@ -248,44 +246,10 @@ end
 # ----------------------------------------
 
 desc "Generate css/parser.rb and css/tokenizer.rex"
-task 'generate' => [GENERATED_PARSER, GENERATED_TOKENIZER]
+task 'generate' => [:parser, :lexer]
 task 'gem:spec' => 'generate' if Rake::Task.task_defined?("gem:spec")
-
-# This is a big hack to make sure that the racc and rexical
-# dependencies in the Gemfile are constrainted to ruby platforms
-# (i.e. MRI and Rubinius). There's no way to do that through hoe,
-# and any solution will require changing hoe and hoe-bundler.
-old_gemfile_task = Rake::Task['bundler:gemfile'] rescue nil
-task 'bundler:gemfile' do
-  old_gemfile_task.invoke if old_gemfile_task
-
-  lines = File.open('Gemfile', 'r') { |f| f.readlines }.map do |line|
-    line =~ /racc|rexical/ ? "#{line.strip}, :platform => [:ruby, :mingw, :x64_mingw]" : line
-  end
-  File.open('Gemfile', 'w') { |f| lines.each { |line| f.puts line } }
-end
-
-file GENERATED_PARSER => "lib/nokogiri/css/parser.y" do |t|
-  if java?
-    warn "WARNING: #{GENERATED_PARSER} may be out of date:"
-    sh "ls -lt #{t.name} #{t.prerequisites.first}"
-  else
-    sh "racc -l -o #{t.name} #{t.prerequisites.first}"
-  end
-end
-
-file GENERATED_TOKENIZER => "lib/nokogiri/css/tokenizer.rex" do |t|
-  if java?
-    warn "WARNING: #{GENERATED_TOKENIZER} may be out of date:"
-    sh "ls -lt #{t.name} #{t.prerequisites.first}"
-  else
-    sh "rex --independent -o #{t.name} #{t.prerequisites.first}"
-  end
-end
-
 [:compile, :check_manifest].each do |task_name|
-  Rake::Task[task_name].prerequisites << GENERATED_PARSER
-  Rake::Task[task_name].prerequisites << GENERATED_TOKENIZER
+  Rake::Task[task_name].prerequisites << :generate
 end
 
 # ----------------------------------------
